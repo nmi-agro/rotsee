@@ -2,7 +2,7 @@
 
 <!-- badges: start -->
 [![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html)
-[![R-CMD-check](https://github.com/AgroCares/rotsee/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/AgroCares/rotsee/actions/workflows/R-CMD-check.yaml)
+[![R-CMD-check](https://github.com/nmi-agro/rotsee/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/nmi-agro/rotsee/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
 > [!NOTE]
@@ -20,7 +20,7 @@ You can install the development version of rotsee from [GitHub](https://github.c
 
 ``` r
 # install.packages("devtools")
-devtools::install_github("AgroCares/rotsee")
+devtools::install_github("nmi-agro/rotsee")
 ```
 
 ## Usage
@@ -45,4 +45,4 @@ The `rotsee` package is developed and maintained by the [Nutrienten Management I
 
 ## Contact
 
-For questions, bug reports, and suggestions, please use the [issue tracker](https://github.com/AgroCares/rotsee/issues).
+For questions, bug reports, and suggestions, please use the [issue tracker](https://github.com/nmi-agro/rotsee/issues).
