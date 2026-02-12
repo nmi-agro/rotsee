@@ -1,3 +1,7 @@
+# rotsee v0.2.3 2026-02-11
+## changed
+* Rename organization to `nmi-agro`
+
 # rotsee v0.2.2 2026-01-09
 ## added
 * test helper factories to aid with unit test creation
