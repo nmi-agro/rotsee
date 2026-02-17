@@ -226,7 +226,7 @@ rc_sim <- function(soil_properties,
     c_fractions <- as.list(rothc_parms$c_fractions)
     
     # calculate initial pool sizes based on supplied fraction distribution (kg C / ha)
-    dt.soc[,CIOM0 := c_fractions$fr_IOM * toc^1.139]
+    dt.soc[,CIOM0 := c_fractions$fr_IOM * ((toc*0.001)^1.139)*1000]
     dt.soc[,CDPM0 := c_fractions$fr_DPM * (toc-CIOM0)]
     dt.soc[,CRPM0 := c_fractions$fr_RPM * (toc-CIOM0)]
     dt.soc[,CBIO0 := c_fractions$fr_BIO * (toc-CIOM0)]

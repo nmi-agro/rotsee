@@ -696,3 +696,35 @@ test_that("rc_sim provides correct output in years or months", {
   expect_s3_class(result, "data.table")
   expect_equal(nrow(result), 223)
 })
+
+
+test_that("rc_sim runs correctly when start_date of simulation is after first crop growth", {
+  # set up correct input data
+  soil_properties <- create_soil_properties()
+  
+  A_DEPTH = 0.3
+  
+  B_DEPTH = 0.3
+  
+  
+  M_TILLAGE_SYSTEM = 'CT'
+  
+  rothc_rotation <- create_rotation()
+  
+  rothc_amendment <- create_amendment()
+  
+  parms <- create_parms()
+  parms$start_date <- "2022-06-01"
+  
+  weather <- create_weather()[rep(1:.N, 19)][, year := rep(2022:2040, each = 12)]
+  
+  # run the package
+  result <- rc_sim(soil_properties = soil_properties, A_DEPTH = A_DEPTH,
+                   B_DEPTH = B_DEPTH, M_TILLAGE_SYSTEM = M_TILLAGE_SYSTEM,
+                   rothc_rotation = rothc_rotation, rothc_amendment = rothc_amendment, 
+                   weather = weather, rothc_parms = parms)
+  
+  # check outputs
+  expect_s3_class(result, "data.table")
+  expect_equal(result$month, rep(6, 19))
+  })

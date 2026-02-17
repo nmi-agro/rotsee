@@ -963,3 +963,175 @@ if(!is.null(event)){
   
 }
 
+#' Function to re-calculate RothC decomposition factors based on tillage intensity
+#'
+#' @param M_TILLAGE_SYSTEM (character) gives the tillage system applied. Options include NT (no-till), ST (shallow-till), CT (conventional-till) and DT (deep-till). Defaults to CT.
+#' @param B_REGION (character) The region of the location
+#' @param soil_properties (data.table) list of soil properties. See details for more information
+#'
+#' @returns
+#' A list with altered decomposition rates based on soil properties and tillage rates
+#' 
+#' @details
+#' This function recalculates the standard RothC decomposition rates based on a supplied region and soil properties.
+#' 
+#' Soil_properties: soil properties table required to select appropriate adjustment factors for Brazil.
+#' Should include the following columns:
+#' * A_SAND_MI, the sand content of the soil (\%)
+#' * A_C_OF (numeric), soil organic carbon content (g C/kg), preferably for soil depth 0.3 m.
+#' * A_DENSITY_SA (numeric), dry soil bulk density(g/cm3). Required if A_C_OF is supplied. In case this is not know, can be calculated using function \link{rc_calculate_bd} given a clay and organic matter content
+#' * B_C_ST03 (numeric), soil organic carbon stock (Mg C/ha), preferably for soil depth 0.3 m. Required if A_C_OF is not supplied. If both are supplied, B_C_ST03 will be used to set soil organic carbon stocks.
+#' 
+#' 
+#' @export
+rc_tillage_correction <- function(M_TILLAGE_SYSTEM = 'CT',
+                               B_REGION,
+                               soil_properties = NULL){
+  
+  # check input parameters
+  checkmate::assert_character(M_TILLAGE_SYSTEM)
+  checkmate::assert_subset(M_TILLAGE_SYSTEM, c('CT', 'ST', 'NT', 'DT'))
+  checkmate::assert_character(B_REGION)
+
+  # define standard decomposition rates
+  dec_rates <- c(k1 = 10, k2 = 0.3, k3 = 0.66, k4 = 0.02)
+  
+  # define region
+  if(B_REGION == 'brazil'){
+    # Brazil adaptations based on Hyun & Yoo (2024) (https://doi.org/10.1016/j.scitotenv.2023.168010)
+    
+    if(M_TILLAGE_SYSTEM == 'NT'){
+      # non-conventional tillage
+      
+      if(soil_properties$A_SAND_MI <= 35){ # adaptation for low sand content (TN4)
+        dec_rates <- c(k1 = 10 * 0.72, k2 = 0.3 * 0.97, k3 = 0.66 * 0.99, k4 = 0.02 * 0.94)
+        
+      }else if(soil_properties$A_SAND_MI >= 37.6){ # adaptations for high sand content
+        toc_kg <- if (!is.null(soil_properties$B_C_ST03) && length(soil_properties$B_C_ST03) > 0) {
+          soil_properties$B_C_ST03 * 1000
+          } else {
+            soil_properties$A_C_OF / 1000 * soil_properties$A_DENSITY_SA * 0.3 * 100 * 100
+            }
+        if(toc_kg < 75.7){
+          # high sand + low C stocks (TN2)
+          dec_rates <- c(k1 = 10 * 1.71, k2 = 0.3 * 0.35, k3 = 0.66 * 0.38, k4 = 0.02 * 0.87)
+        }else{
+          # high sand + high C stocks (TN1)
+          dec_rates <- c(k1 = 10 * 1.54, k2 = 0.3 * 0.35, k3 = 0.66 * 1.42, k4 = 0.02 * 0.42)
+        }
+      }else{
+        # sand content between 35 and 37.6% (TN3)
+        dec_rates <- c(k1 = 10 * 1.54, k2 = 0.3 * 2.15, k3 = 0.66 * 2.38, k4 = 0.02 * 2.93)
+      }
+    }else{
+      # Conventional tillage
+      dec_rates <- c(k1 = 10, k2 = 0.3, k3 = 0.66, k4 = 0.02)
+    }
+    
+  }else if(B_REGION == 'france'){
+    if(M_TILLAGE_SYSTEM == 'NT'){
+      dec_rates = c(k1 = 10, k2 = 0.3, k3 = 0.66, k4 = 0.02) * 0.93
+    }
+  }
+    
+  return(dec_rates)
+}
+
+#' Helper function to align dates of provided crop and amendment information
+#'
+#' @param plan_crop (data.table) Data table of planned crop rotation. See details for required information. 
+#' @param plan_amend (data.table) Data table of planned amendment applications. See details for required information
+#' @param baseline_crop (data.table) Data table of baseline crop rotation. See details for required information. 
+#' @param baseline_amend (data.table) Data table of baseline amendment applications. See details for required information
+#' @param start_date (date, formatted YYYY-MM-DD) start date of simulation period
+#' @param end_date (date, formatted YYYY-MM-DD) end date of simulation period
+#'
+#' @returns
+#' list with date-aligned plan and baseline files
+#' @export
+
+rc_align_dates <- function(plan_crop,
+                           plan_amend,
+                           baseline_crop,
+                           baseline_amend,
+                           start_date,
+                           end_date){
+  # check inputs
+  ## plan_crop
+  checkmate::assert_data_table(plan_crop, null.ok = TRUE, min.rows = 1)
+  
+  req <- c("B_LU_START", "B_LU_END","B_LU_HC","B_C_OF_CULT")
+  checkmate::assert_names(colnames(plan_crop), must.include = req)
+  
+  checkmate::assert_numeric(plan_crop$B_LU_HC, lower = rc_minval('B_LU_HC'), upper = rc_maxval('B_LU_HC'), any.missing = FALSE)
+  checkmate::assert_numeric(plan_crop$B_C_OF_CULT, lower = rc_minval('B_C_OF_CULT'), upper = rc_maxval('B_C_OF_CULT'), any.missing = FALSE)
+  checkmate::assert_date(as.Date(plan_crop$B_LU_START), any.missing = F)
+  checkmate::assert_date(as.Date(plan_crop$B_LU_END), any.missing = F)
+  if(any(plan_crop$B_LU_START > plan_crop$B_LU_END)) {
+    bad_rows <- which(plan_crop$B_LU_START > plan_crop$B_LU_END)
+    stop(sprintf('Planned crop start date after end date in row: %s', paste(bad_rows, collapse=", ")))
+  }
+
+  ## baseline_crop
+  checkmate::assert_data_table(baseline_crop, null.ok = TRUE, min.rows = 1)
+  
+  req <- c("B_LU_START", "B_LU_END","B_LU_HC","B_C_OF_CULT")
+  checkmate::assert_names(colnames(baseline_crop), must.include = req)
+  
+  checkmate::assert_numeric(baseline_crop$B_LU_HC, lower = rc_minval('B_LU_HC'), upper = rc_maxval('B_LU_HC'), any.missing = FALSE)
+  checkmate::assert_numeric(baseline_crop$B_C_OF_CULT, lower = rc_minval('B_C_OF_CULT'), upper = rc_maxval('B_C_OF_CULT'), any.missing = FALSE)
+  checkmate::assert_date(as.Date(baseline_crop$B_LU_START), any.missing = F)
+  checkmate::assert_date(as.Date(baseline_crop$B_LU_END), any.missing = F)
+  if(any(baseline_crop$B_LU_START > baseline_crop$B_LU_END)) {
+    bad_rows <- which(baseline_crop$B_LU_START > baseline_crop$B_LU_END)
+    stop(sprintf('Baseline crop start date after end date in row: %s', paste(bad_rows, collapse=", ")))
+  }
+
+  ## plan_amend
+  checkmate::assert_data_table(plan_amend, null.ok = TRUE, min.rows = 1)
+  
+  req <- c("P_HC","P_DATE_FERTILIZATION")
+  checkmate::assert_names(colnames(plan_amend), must.include = req)
+  
+  checkmate::assert_date(as.Date(plan_amend$P_DATE_FERTILIZATION), any.missing = FALSE)
+  checkmate::assert_numeric(plan_amend$P_HC, lower = rc_minval('P_HC'), upper = rc_maxval('P_HC'), any.missing = FALSE)
+  if ("P_NAME" %in% names(plan_amend))
+    checkmate::assert_character(plan_amend$P_NAME, any.missing = TRUE)
+  if ("P_DOSE" %in% names(plan_amend))
+    checkmate::assert_numeric(plan_amend$P_DOSE, lower = rc_minval('P_DOSE'), upper = rc_maxval('P_DOSE'), any.missing = TRUE)
+  if ("P_C_OF" %in% names(plan_amend))
+    checkmate::assert_numeric(plan_amend$P_C_OF, lower = rc_minval('P_C_OF'), upper = rc_maxval('P_C_OF'), any.missing = TRUE)
+  if ("B_C_OF_AMENDMENT" %in% names(plan_amend))
+    checkmate::assert_numeric(plan_amend$B_C_OF_AMENDMENT, lower = rc_minval('B_C_OF_AMENDMENT'), upper = rc_maxval('B_C_OF_AMENDMENT'), any.missing = TRUE)
+
+  ## baseline_amend
+  checkmate::assert_data_table(baseline_amend, null.ok = TRUE, min.rows = 1)
+  
+  req <- c("P_HC","P_DATE_FERTILIZATION")
+  checkmate::assert_names(colnames(baseline_amend), must.include = req)
+  
+  checkmate::assert_date(as.Date(baseline_amend$P_DATE_FERTILIZATION), any.missing = FALSE)
+  checkmate::assert_numeric(baseline_amend$P_HC, lower = rc_minval('P_HC'), upper = rc_maxval('P_HC'), any.missing = FALSE)
+  if ("P_NAME" %in% names(baseline_amend))
+    checkmate::assert_character(baseline_amend$P_NAME, any.missing = TRUE)
+  if ("P_DOSE" %in% names(baseline_amend))
+    checkmate::assert_numeric(baseline_amend$P_DOSE, lower = rc_minval('P_DOSE'), upper = rc_maxval('P_DOSE'), any.missing = TRUE)
+  if ("P_C_OF" %in% names(baseline_amend))
+    checkmate::assert_numeric(baseline_amend$P_C_OF, lower = rc_minval('P_C_OF'), upper = rc_maxval('P_C_OF'), any.missing = TRUE)
+  if ("B_C_OF_AMENDMENT" %in% names(baseline_amend))
+    checkmate::assert_numeric(baseline_amend$B_C_OF_AMENDMENT, lower = rc_minval('B_C_OF_AMENDMENT'), upper = rc_maxval('B_C_OF_AMENDMENT'), any.missing = TRUE)
+  
+  
+  # Extend files based on start and end date
+  plan_crop_ext <- rc_extend_crops(crops = plan_crops, start_date = start_date, end_date = end_date)
+  plan_amend_ext <- rc_extend_amendments(amendments = plan_amend, start_date = start_date, end_date = end_date)
+  
+  baseline_crop_ext <-  rc_extend_crops(crops = baseline_crop, start_date = start_date, end_date = end_date)
+  baseline_amend_ext <- rc_extend_amendments(amendments = baseline_amend, start_date = start_date, end_date = end_date)
+  
+  # join files together
+  extension <- c(plan_crop_ext, plan_amend_ext, baseline_crop_ext, baseline_amend_ext)
+  
+  return(extension)
+  
+}
