@@ -1034,6 +1034,104 @@ rc_tillage_correction <- function(M_TILLAGE_SYSTEM = 'CT',
     }
   }
     
-  
   return(dec_rates)
+}
+
+#' Helper function to align dates of provided crop and amendment information
+#'
+#' @param plan_crop (data.table) Data table of planned crop rotation. See details for required information. 
+#' @param plan_amend (data.table) Data table of planned amendment applications. See details for required information
+#' @param baseline_crop (data.table) Data table of baseline crop rotation. See details for required information. 
+#' @param baseline_amend (data.table) Data table of baseline amendment applications. See details for required information
+#' @param start_date (date, formatted YYYY-MM-DD) start date of simulation period
+#' @param end_date (date, formatted YYYY-MM-DD) end date of simulation period
+#'
+#' @returns
+#' list with date-aligned plan and baseline files
+#' @export
+
+rc_align_dates <- function(plan_crop,
+                           plan_amend,
+                           baseline_crop,
+                           baseline_amend,
+                           start_date,
+                           end_date){
+  # check inputs
+  ## plan_crop
+  checkmate::assert_data_table(plan_crop, null.ok = TRUE, min.rows = 1)
+  
+  req <- c("B_LU_START", "B_LU_END","B_LU_HC","B_C_OF_CULT")
+  checkmate::assert_names(colnames(plan_crop), must.include = req)
+  
+  checkmate::assert_numeric(plan_crop$B_LU_HC, lower = rc_minval('B_LU_HC'), upper = rc_maxval('B_LU_HC'), any.missing = FALSE)
+  checkmate::assert_numeric(plan_crop$B_C_OF_CULT, lower = rc_minval('B_C_OF_CULT'), upper = rc_maxval('B_C_OF_CULT'), any.missing = FALSE)
+  checkmate::assert_date(as.Date(plan_crop$B_LU_START), any.missing = F)
+  checkmate::assert_date(as.Date(plan_crop$B_LU_END), any.missing = F)
+  if(any(plan_crop$B_LU_START > plan_crop$B_LU_END)) {
+    bad_rows <- which(plan_crop$B_LU_START > plan_crop$B_LU_END)
+    stop(sprintf('Planned crop start date after end date in row: %s', paste(bad_rows, collapse=", ")))
+  }
+
+  ## baseline_crop
+  checkmate::assert_data_table(baseline_crop, null.ok = TRUE, min.rows = 1)
+  
+  req <- c("B_LU_START", "B_LU_END","B_LU_HC","B_C_OF_CULT")
+  checkmate::assert_names(colnames(baseline_crop), must.include = req)
+  
+  checkmate::assert_numeric(baseline_crop$B_LU_HC, lower = rc_minval('B_LU_HC'), upper = rc_maxval('B_LU_HC'), any.missing = FALSE)
+  checkmate::assert_numeric(baseline_crop$B_C_OF_CULT, lower = rc_minval('B_C_OF_CULT'), upper = rc_maxval('B_C_OF_CULT'), any.missing = FALSE)
+  checkmate::assert_date(as.Date(baseline_crop$B_LU_START), any.missing = F)
+  checkmate::assert_date(as.Date(baseline_crop$B_LU_END), any.missing = F)
+  if(any(baseline_crop$B_LU_START > baseline_crop$B_LU_END)) {
+    bad_rows <- which(baseline_crop$B_LU_START > baseline_crop$B_LU_END)
+    stop(sprintf('Baseline crop start date after end date in row: %s', paste(bad_rows, collapse=", ")))
+  }
+
+  ## plan_amend
+  checkmate::assert_data_table(plan_amend, null.ok = TRUE, min.rows = 1)
+  
+  req <- c("P_HC","P_DATE_FERTILIZATION")
+  checkmate::assert_names(colnames(plan_amend), must.include = req)
+  
+  checkmate::assert_date(as.Date(plan_amend$P_DATE_FERTILIZATION), any.missing = FALSE)
+  checkmate::assert_numeric(plan_amend$P_HC, lower = rc_minval('P_HC'), upper = rc_maxval('P_HC'), any.missing = FALSE)
+  if ("P_NAME" %in% names(plan_amend))
+    checkmate::assert_character(plan_amend$P_NAME, any.missing = TRUE)
+  if ("P_DOSE" %in% names(plan_amend))
+    checkmate::assert_numeric(plan_amend$P_DOSE, lower = rc_minval('P_DOSE'), upper = rc_maxval('P_DOSE'), any.missing = TRUE)
+  if ("P_C_OF" %in% names(plan_amend))
+    checkmate::assert_numeric(plan_amend$P_C_OF, lower = rc_minval('P_C_OF'), upper = rc_maxval('P_C_OF'), any.missing = TRUE)
+  if ("B_C_OF_AMENDMENT" %in% names(plan_amend))
+    checkmate::assert_numeric(plan_amend$B_C_OF_AMENDMENT, lower = rc_minval('B_C_OF_AMENDMENT'), upper = rc_maxval('B_C_OF_AMENDMENT'), any.missing = TRUE)
+
+  ## baseline_amend
+  checkmate::assert_data_table(baseline_amend, null.ok = TRUE, min.rows = 1)
+  
+  req <- c("P_HC","P_DATE_FERTILIZATION")
+  checkmate::assert_names(colnames(baseline_amend), must.include = req)
+  
+  checkmate::assert_date(as.Date(baseline_amend$P_DATE_FERTILIZATION), any.missing = FALSE)
+  checkmate::assert_numeric(baseline_amend$P_HC, lower = rc_minval('P_HC'), upper = rc_maxval('P_HC'), any.missing = FALSE)
+  if ("P_NAME" %in% names(baseline_amend))
+    checkmate::assert_character(baseline_amend$P_NAME, any.missing = TRUE)
+  if ("P_DOSE" %in% names(baseline_amend))
+    checkmate::assert_numeric(baseline_amend$P_DOSE, lower = rc_minval('P_DOSE'), upper = rc_maxval('P_DOSE'), any.missing = TRUE)
+  if ("P_C_OF" %in% names(baseline_amend))
+    checkmate::assert_numeric(baseline_amend$P_C_OF, lower = rc_minval('P_C_OF'), upper = rc_maxval('P_C_OF'), any.missing = TRUE)
+  if ("B_C_OF_AMENDMENT" %in% names(baseline_amend))
+    checkmate::assert_numeric(baseline_amend$B_C_OF_AMENDMENT, lower = rc_minval('B_C_OF_AMENDMENT'), upper = rc_maxval('B_C_OF_AMENDMENT'), any.missing = TRUE)
+  
+  
+  # Extend files based on start and end date
+  plan_crop_ext <- rc_extend_crops(crops = plan_crops, start_date = start_date, end_date = end_date)
+  plan_amend_ext <- rc_extend_amendments(amendments = plan_amend, start_date = start_date, end_date = end_date)
+  
+  baseline_crop_ext <-  rc_extend_crops(crops = baseline_crop, start_date = start_date, end_date = end_date)
+  baseline_amend_ext <- rc_extend_amendments(amendments = baseline_amend, start_date = start_date, end_date = end_date)
+  
+  # join files together
+  extension <- c(plan_crop_ext, plan_amend_ext, baseline_crop_ext, baseline_amend_ext)
+  
+  return(extension)
+  
 }
