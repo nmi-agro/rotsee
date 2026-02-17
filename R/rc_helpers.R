@@ -963,3 +963,73 @@ if(!is.null(event)){
   
 }
 
+#' Function to re-calculate RothC decomposition factors based on tillage intensity
+#'
+#' @param M_TILLAGE_SYSTEM (character) gives the tillage system applied. Options include NT (no-till), ST (shallow-till), CT (conventional-till) and DT (deep-till). Defaults to CT.
+#' @param B_REGION (character) The region of the location
+#' @param soil_properties (data.table) list of soil properties. See details for more information
+#'
+#' @returns
+#' A list with altered decomposition rates based on soil properties and tillage rates
+#' 
+#' @details
+#' This function recalculates the standard RothC decomposition rates based on a supplied region and soil properties.
+#' 
+#' Soil_properties: soil properties table required to select appropriate adjustment factors for Brazil.
+#' Should include the following columns:
+#' * A_SAND_MI, the sand content of the soil (\%)
+#' * A_C_OF (numeric), soil organic carbon content (g C/kg), preferably for soil depth 0.3 m.
+#' * A_DENSITY_SA (numeric), dry soil bulk density(g/cm3). Required if A_C_OF is supplied. In case this is not know, can be calculated using function \link{rc_calculate_bd} given a clay and organic matter content
+#' * B_C_ST03 (numeric), soil organic carbon stock (Mg C/ha), preferably for soil depth 0.3 m. Required if A_C_OF is not supplied. If both are supplied, B_C_ST03 will be used to set soil organic carbon stocks.
+#' 
+#' 
+#' @export
+rc_tillage_correction <- function(M_TILLAGE_SYSTEM = 'CT',
+                               B_REGION = NULL,
+                               soil_properties = NULL){
+  
+  # check input parameters
+  checkmate::assert_character(M_TILLAGE_SYSTEM)
+  checkmate::assert_subset(M_TILLAGE_SYSTEM, c('CT', 'ST', 'NT', 'DT'))
+  checkmate::assert_character(B_REGION)
+
+  # define standard decomposition rates
+  dec_rates <- c(k1 = 10, k2 = 0.3, k3 = 0.66, k4 = 0.02)
+  
+  # define region
+  if(B_REGION == 'brazil'){
+    # Brazil adaptations based on Hyun & Yoo (2024) (https://doi.org/10.1016/j.scitotenv.2023.168010)
+    
+    if(M_TILLAGE_SYSTEM == 'NT'){
+      # non-conventional tillage
+      
+      if(soil_properties$A_SAND_MI <= 35){ # adaptation for low sand content (TN4)
+        dec_rates <- c(k1 = 10 * 0.72, k2 = 0.3 * 0.97, k3 = 0.66 * 0.99, k4 = 0.02 * 0.94)
+        
+      }else if(soil_properties$A_SAND_MI >= 37.6){ # adaptations for high sand content
+  
+        if(soil_properties$A_C_OF / 1000 * soil_properties$A_DENSITY_SA * 0.3 * 100 * 100 < 75.7){
+          # high sand + low C stocks (TN2)
+          dec_rates <- c(k1 = 10 * 1.71, k2 = 0.3 * 0.35, k3 = 0.66 * 0.38, k4 = 0.02 * 0.87)
+        }else{
+          # high sand + high C stocks (TN1)
+          dec_rates <- c(k1 = 10 * 1.54, k2 = 0.3 * 0.35, k3 = 0.66 * 1.42, k4 = 0.02 * 0.42)
+        }
+      }else{
+        # sand content between 35 and 37.6% (TN3)
+        dec_rates <- c(k1 = 10 * 1.54, k2 = 0.3 * 2.15, k3 = 0.66 * 2.38, k4 = 0.02 * 2.93)
+      }
+    }else{
+      # Conventional tillage
+      dec_rates <- c(k1 = 10, k2 = 0.3, k3 = 0.66, k4 = 0.02)
+    }
+    
+  }else if(B_REGION == 'france'){
+    if(M_TILLAGE_SYSTEM == 'NT'){
+      dec_rates = c(k1 = 10, k2 = 0.3, k3 = 0.66, k4 = 0.02) * 0.93
+    }
+  }
+    
+  
+  return(dec_rates)
+}
