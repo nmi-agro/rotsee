@@ -985,7 +985,7 @@ if(!is.null(event)){
 #' 
 #' @export
 rc_tillage_correction <- function(M_TILLAGE_SYSTEM = 'CT',
-                               B_REGION = NULL,
+                               B_REGION,
                                soil_properties = NULL){
   
   # check input parameters
@@ -1007,8 +1007,12 @@ rc_tillage_correction <- function(M_TILLAGE_SYSTEM = 'CT',
         dec_rates <- c(k1 = 10 * 0.72, k2 = 0.3 * 0.97, k3 = 0.66 * 0.99, k4 = 0.02 * 0.94)
         
       }else if(soil_properties$A_SAND_MI >= 37.6){ # adaptations for high sand content
-  
-        if(soil_properties$A_C_OF / 1000 * soil_properties$A_DENSITY_SA * 0.3 * 100 * 100 < 75.7){
+        toc_kg <- if (!is.null(soil_properties$B_C_ST03) && length(soil_properties$B_C_ST03) > 0) {
+          soil_properties$B_C_ST03 * 1000
+          } else {
+            soil_properties$A_C_OF / 1000 * soil_properties$A_DENSITY_SA * 0.3 * 100 * 100
+            }
+        if(toc_kg < 75.7){
           # high sand + low C stocks (TN2)
           dec_rates <- c(k1 = 10 * 1.71, k2 = 0.3 * 0.35, k3 = 0.66 * 0.38, k4 = 0.02 * 0.87)
         }else{
